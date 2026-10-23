@@ -3,12 +3,14 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.repository.OrderRepository
+import com.example.data.firebase.FirestoreProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.example.domain.model.CartItem
 import com.example.domain.model.DeliveryAccount
 import com.example.domain.model.Order
 import com.example.domain.model.OrderStatus
 import com.example.domain.model.Product
+import com.example.domain.model.Review
 import com.example.domain.model.SellerAccount
 import com.example.domain.model.SellerStatus
 import com.example.domain.model.Shop
@@ -50,6 +52,34 @@ class DashboardViewModel : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private val _searchHistory = MutableStateFlow<List<String>>(
+        listOf("Sac à main", "Chaussures cuir", "Robe pagne", "Écouteurs")
+    )
+    val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    fun addToSearchHistory(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isNotEmpty()) {
+            val current = _searchHistory.value.toMutableList()
+            current.remove(trimmed)
+            current.add(0, trimmed)
+            if (current.size > 10) {
+                current.removeAt(current.size - 1)
+            }
+            _searchHistory.value = current
+        }
+    }
+
+    fun removeFromSearchHistory(query: String) {
+        val current = _searchHistory.value.toMutableList()
+        current.remove(query)
+        _searchHistory.value = current
+    }
+
+    fun clearSearchHistory() {
+        _searchHistory.value = emptyList()
+    }
+
     private val _selectedCategory = MutableStateFlow("Tous")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
@@ -73,9 +103,73 @@ class DashboardViewModel : ViewModel() {
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _reviews = MutableStateFlow<List<Review>>(
+        listOf(
+            Review("r1", "product", "p1", 5, "Magnifique sac artisanal, très solide !", "Marie Ngono"),
+            Review("r2", "product", "p2", 4, "Très bon cuir, confortable.", "Paul Biya"),
+            Review("r3", "seller", "La Boutique de Marie", 5, "Vendeur très professionnel et rapide.", "Sophie Laurent")
+        )
+    )
+    val reviews: StateFlow<List<Review>> = _reviews.asStateFlow()
+
     init {
         fetchActiveOrders()
         loadMockProducts()
+        fetchReviews()
+    }
+
+    private fun fetchReviews() {
+        try {
+            val db = FirestoreProvider.get(com.google.firebase.FirebaseApp.getInstance().applicationContext)
+            db.collection("reviews").addSnapshotListener { snapshot, error ->
+                if (error == null && snapshot != null) {
+                    val list = snapshot.documents.mapNotNull { doc ->
+                        val id = doc.getString("id") ?: doc.id
+                        val targetType = doc.getString("targetType") ?: "product"
+                        val targetId = doc.getString("targetId") ?: ""
+                        val rating = doc.getLong("rating")?.toInt() ?: 5
+                        val comment = doc.getString("comment") ?: ""
+                        val customerName = doc.getString("customerName") ?: "Client"
+                        val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                        Review(id, targetType, targetId, rating, comment, customerName, timestamp)
+                    }
+                    if (list.isNotEmpty()) {
+                        _reviews.value = list
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Fallback
+        }
+    }
+
+    fun addReview(targetType: String, targetId: String, rating: Int, comment: String, customerName: String) {
+        val newReview = Review(
+            id = "review_${System.currentTimeMillis()}",
+            targetType = targetType,
+            targetId = targetId,
+            rating = rating.coerceIn(1, 5),
+            comment = comment,
+            customerName = customerName.ifEmpty { "Client NboaShop" },
+            timestamp = System.currentTimeMillis()
+        )
+        _reviews.value = listOf(newReview) + _reviews.value
+
+        try {
+            val db = FirestoreProvider.get(com.google.firebase.FirebaseApp.getInstance().applicationContext)
+            val reviewMap = hashMapOf(
+                "id" to newReview.id,
+                "targetType" to targetType,
+                "targetId" to targetId,
+                "rating" to rating,
+                "comment" to comment,
+                "customerName" to customerName,
+                "timestamp" to newReview.timestamp
+            )
+            db.collection("reviews").document(newReview.id).set(reviewMap)
+        } catch (e: Exception) {
+            // Fallback
+        }
     }
 
     private fun loadMockProducts() {
@@ -141,13 +235,22 @@ class DashboardViewModel : ViewModel() {
             currentCart.add(CartItem(product))
         }
         _cart.value = currentCart
+        com.example.data.analytics.AnalyticsManager.trackAddToCart(product)
     }
 
     fun removeFromCart(productId: String) {
         _cart.value = _cart.value.filter { it.product.id != productId }
     }
 
-    fun createOrder(customerName: String, totalAmount: Double, deliveryAddress: String): Order {
+    fun createOrder(
+        customerName: String, 
+        totalAmount: Double, 
+        deliveryAddress: String,
+        paymentProvider: String? = "Mobile Money",
+        transactionRef: String? = null,
+        payerPhone: String? = null,
+        country: String? = "Cameroun"
+    ): Order {
         val orderId = "CMD-${System.currentTimeMillis() % 100000}"
         val purchasedItems = _cart.value.map {
             mapOf(
@@ -162,18 +265,56 @@ class DashboardViewModel : ViewModel() {
             customerName = customerName,
             status = OrderStatus.PAID,
             totalAmount = totalAmount,
-            deliveryAddress = deliveryAddress
+            deliveryAddress = deliveryAddress,
+            paymentProvider = paymentProvider,
+            transactionRef = transactionRef,
+            payerPhone = payerPhone,
+            country = country
         )
+
+        // Automatically record monetization commission & service fee
+        viewModelScope.launch {
+            val breakdown = com.example.data.monetization.MonetizationManager.calculateOrderBreakdown(totalAmount)
+            // Record buyer service fee
+            com.example.data.monetization.MonetizationManager.recordRevenue(
+                source = "SERVICE_FEE",
+                amount = breakdown.first,
+                description = "Frais de service & garantie acheteur - Commande #$orderId",
+                referenceId = orderId,
+                paymentOperator = paymentProvider ?: "Orange Money"
+            )
+            // Record platform commission on marketplace sale
+            com.example.data.monetization.MonetizationManager.recordRevenue(
+                source = "COMMISSION",
+                amount = breakdown.second,
+                description = "Commission vente (5%) - Commande #$orderId ($customerName)",
+                referenceId = orderId,
+                paymentOperator = paymentProvider ?: "MTN MoMo"
+            )
+            // Track Purchase in Firebase Analytics
+            com.example.data.analytics.AnalyticsManager.trackPurchase(
+                orderId = orderId,
+                totalAmount = totalAmount,
+                itemCount = purchasedItems.size,
+                paymentProvider = paymentProvider ?: "Mobile Money",
+                country = country ?: "Cameroun"
+            )
+        }
         
         // Save to Firestore safely
         try {
-            val db = FirebaseFirestore.getInstance()
+            val db = FirestoreProvider.get(com.google.firebase.FirebaseApp.getInstance().applicationContext)
             val orderMap = hashMapOf(
                 "id" to orderId,
                 "customerName" to customerName,
                 "status" to OrderStatus.PAID.name,
+                "statusLabel" to OrderStatus.PAID.label,
                 "totalAmount" to totalAmount,
                 "deliveryAddress" to deliveryAddress,
+                "paymentProvider" to (paymentProvider ?: "Mobile Money"),
+                "paymentTransactionId" to (transactionRef ?: "TXN-${System.currentTimeMillis()}"),
+                "payerPhone" to (payerPhone ?: ""),
+                "country" to (country ?: "Cameroun"),
                 "timestamp" to System.currentTimeMillis(),
                 "items" to purchasedItems
             )
@@ -185,6 +326,47 @@ class DashboardViewModel : ViewModel() {
         _orders.value = listOf(newOrder) + _orders.value
         _cart.value = emptyList()
         return newOrder
+    }
+
+    fun upgradeSellerSubscription(sellerId: String, tier: com.example.data.monetization.SubscriptionTier) {
+        _sellerAccounts.value = _sellerAccounts.value.map {
+            if (it.id == sellerId || it.name == _currentShop.value?.name) {
+                it.copy(
+                    subscriptionTier = tier.title,
+                    isVerified = tier != com.example.data.monetization.SubscriptionTier.FREE,
+                    remainingBoosts = it.remainingBoosts + tier.freeBoosts
+                )
+            } else it
+        }
+        _currentShop.value = _currentShop.value?.copy(
+            isVerifiedPro = tier != com.example.data.monetization.SubscriptionTier.FREE,
+            subscriptionTier = tier.title
+        )
+    }
+
+    fun applyProductBoost(productId: String, boostTitle: String) {
+        _products.value = _products.value.map {
+            if (it.id == productId) {
+                it.copy(isSponsored = true, boostBadge = "⭐ Sponsorisé - $boostTitle")
+            } else it
+        }
+    }
+
+    fun updateOrderStatus(orderId: String, newStatus: OrderStatus) {
+        _orders.value = _orders.value.map {
+            if (it.id == orderId) it.copy(status = newStatus) else it
+        }
+
+        try {
+            val db = FirestoreProvider.get(com.google.firebase.FirebaseApp.getInstance().applicationContext)
+            db.collection("orders").document(orderId).update(
+                mapOf(
+                    "status" to newStatus.name,
+                    "statusLabel" to newStatus.label,
+                    "lastUpdated" to System.currentTimeMillis()
+                )
+            )
+        } catch (_: Exception) {}
     }
 
     fun registerSeller(name: String, description: String, location: String, pin: String) {

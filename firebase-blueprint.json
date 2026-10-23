@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role-based access for NboaShop",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "role": { "type": "string", "enum": ["CLIENT", "SELLER", "COURIER", "ADMIN"], "description": "User role" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "city": { "type": "string", "description": "City of residence or operations" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp via serverTimestamp" }
+      },
+      "required": ["userId", "email", "displayName", "role", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Marketplace product item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product ID" },
+        "sellerId": { "type": "string", "description": "UID of the merchant seller" },
+        "title": { "type": "string", "description": "Product title" },
+        "description": { "type": "string", "description": "Product description" },
+        "price": { "type": "integer", "description": "Price in FCFA (XAF)" },
+        "currency": { "type": "string", "description": "Currency code XAF" },
+        "category": { "type": "string", "description": "Product category" },
+        "imageUrl": { "type": "string", "description": "Product thumbnail URL" },
+        "inStock": { "type": "boolean", "description": "Availability toggle" },
+        "stockQuantity": { "type": "integer", "description": "Current inventory count" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp via serverTimestamp" }
+      },
+      "required": ["id", "sellerId", "title", "price", "currency", "category", "inStock", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order with COD (4-digit OTP) or Bank Transfer details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique order ID" },
+        "userId": { "type": "string", "description": "UID of customer buyer" },
+        "sellerId": { "type": "string", "description": "UID of merchant seller" },
+        "courierId": { "type": "string", "description": "UID of assigned courier, or empty string" },
+        "totalAmount": { "type": "integer", "description": "Total order amount in XAF" },
+        "paymentMethod": { "type": "string", "enum": ["CASH_ON_DELIVERY", "BANK_TRANSFER"], "description": "Payment method" },
+        "deliveryAddress": { "type": "string", "description": "Street or quarter delivery address" },
+        "deliveryCity": { "type": "string", "description": "City of delivery (e.g. Douala, Yaoundé)" },
+        "contactPhone": { "type": "string", "description": "Customer contact phone" },
+        "deliveryOtp": { "type": "string", "description": "4-digit secret OTP verification code for COD handover" },
+        "bankTransferRef": { "type": "string", "description": "Bank wire reference or transaction ID" },
+        "bankAccountName": { "type": "string", "description": "Selected destination CEMAC bank name" },
+        "itemsSummary": { "type": "string", "description": "Summary of purchased items and quantities" },
+        "status": { "type": "string", "enum": ["PENDING", "CONFIRMED", "PROCESSING", "IN_TRANSIT", "DELIVERED", "CANCELLED"], "description": "Order lifecycle state" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Order timestamp via serverTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Status update timestamp via serverTimestamp" }
+      },
+      "required": ["id", "userId", "sellerId", "totalAmount", "paymentMethod", "deliveryAddress", "deliveryCity", "contactPhone", "status", "createdAt"]
+    },
+    "BankAccount": {
+      "title": "BankAccount",
+      "description": "Official CEMAC bank account details for direct bank transfer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique bank ID" },
+        "bankName": { "type": "string", "description": "Name of the bank (e.g. Afriland First Bank)" },
+        "accountName": { "type": "string", "description": "Account holder name" },
+        "iban": { "type": "string", "description": "IBAN or Account Number" },
+        "rib": { "type": "string", "description": "RIB key and code" },
+        "swift": { "type": "string", "description": "SWIFT / BIC code" },
+        "active": { "type": "boolean", "description": "Whether this account is active for wire transfers" }
+      },
+      "required": ["id", "bankName", "accountName", "iban", "active"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles with role permissions"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Public catalog of merchant products"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Orders tracked by customer, seller, courier, and admin"
+    },
+    "/bank_accounts/{accountId}": {
+      "schema": { "$ref": "#/entities/BankAccount" },
+      "description": "Official CEMAC bank accounts for wire payments"
+    }
+  }
+}

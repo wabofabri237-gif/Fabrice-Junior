@@ -28,6 +28,9 @@ fun RoleSelectionScreen(
     onLegalClick: () -> Unit
 ) {
     var isVisible by remember { mutableStateOf(false) }
+    var showAdminPinDialog by remember { mutableStateOf(false) }
+    var adminPinInput by remember { mutableStateOf("") }
+    var adminPinError by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         delay(100)
@@ -107,7 +110,7 @@ fun RoleSelectionScreen(
                 icon = Icons.Default.AdminPanelSettings,
                 delayMillis = 800,
                 isVisible = isVisible,
-                onClick = { onRoleSelected("Admin") }
+                onClick = { showAdminPinDialog = true }
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -116,6 +119,61 @@ fun RoleSelectionScreen(
                 Text("Mentions Légales & Certificats", color = MaterialTheme.colorScheme.secondary)
             }
         }
+    }
+
+    if (showAdminPinDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showAdminPinDialog = false
+                adminPinInput = ""
+                adminPinError = false
+            },
+            title = { Text("Sécurité Administrateur (PIN)", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Accès restreint aux administrateurs autorisés. Veuillez saisir le code PIN administrateur :", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = adminPinInput,
+                        onValueChange = { 
+                            adminPinInput = it
+                            adminPinError = false
+                        },
+                        label = { Text("Code PIN Admin (ex: 9999)") },
+                        singleLine = true,
+                        isError = adminPinError,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (adminPinError) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Code PIN incorrect. Accès refusé.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (adminPinInput == "9999" || adminPinInput == "ADMIN2026") {
+                        showAdminPinDialog = false
+                        adminPinInput = ""
+                        adminPinError = false
+                        onRoleSelected("Admin")
+                    } else {
+                        adminPinError = true
+                    }
+                }) {
+                    Text("Vérifier & Valider")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showAdminPinDialog = false
+                    adminPinInput = ""
+                    adminPinError = false
+                }) {
+                    Text("Annuler")
+                }
+            }
+        )
     }
 }
 

@@ -1,20 +1,27 @@
 package com.example.ui.screens
 
-import android.util.Log
+import android.app.Activity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.credentials.CredentialManager
-import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.sp
+import com.example.data.auth.AuthRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,62 +30,31 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onBack: () -> Unit
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val authRepo = remember { AuthRepository(context) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    fun startGoogleSignIn() {
-        coroutineScope.launch {
-            isLoading = true
-            errorMessage = null
-            try {
-                val credentialManager = CredentialManager.create(context)
-                
-                // You must configure the Web Client ID in your Google Cloud / Firebase console
-                // and pass it here. For now, this is a placeholder indicating where to place the API key.
-                val googleIdOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId("YOUR_WEB_CLIENT_ID_HERE") // Replace with actual Web Client ID
-                    .setAutoSelectEnabled(true)
-                    .build()
-
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
-
-                // The request will launch the Google UI. We wrap it in a try-catch for demo purposes.
-                // val result = credentialManager.getCredential(context, request)
-                // val credential = result.credential
-                // Log.d("LoginScreen", "Got credential: ${credential.type}")
-                
-                // For this environment without actual Google Services JSON and SHA-1, we just simulate success:
-                onLoginSuccess()
-
-            } catch (e: Exception) {
-                Log.e("LoginScreen", "Google Sign In Failed", e)
-                errorMessage = "Échec de connexion Google. Vérifiez l'ID Client."
-            } finally {
-                isLoading = false
-            }
-        }
+    val roleIcon = when (role.lowercase()) {
+        "vendeur", "seller" -> Icons.Default.Store
+        "livreur", "courier", "delivery" -> Icons.Default.LocalShipping
+        "admin" -> Icons.Default.Security
+        else -> Icons.Default.AccountCircle
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Connexion - $role") },
+                title = { Text("Espace $role - NboaShop") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.primary
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
@@ -92,66 +68,118 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Adresse e-mail") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Mot de passe") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(
-                onClick = onLoginSuccess,
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
+                    .size(88.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = roleIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(48.dp)
                 )
-            ) {
-                Text("Se connecter")
             }
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             Text(
-                "Ou connectez-vous avec",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                text = "Authentification $role",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
             )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Connectez-vous via votre compte Google pour accéder à votre espace sécurisé, vos commandes et vos paiements vérifiés.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             if (errorMessage != null) {
-                Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            
-            OutlinedButton(
-                onClick = { startGoogleSignIn() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.secondary
-                ),
-                enabled = !isLoading
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.secondary)
-                } else {
-                    Text("Google (Firebase Auth)")
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = errorMessage ?: "",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
             }
+
+            Button(
+                onClick = {
+                    isLoading = true
+                    errorMessage = null
+                    val activity = context as? Activity
+                    if (activity != null) {
+                        authRepo.signInWithGoogle(
+                            activity = activity,
+                            scope = coroutineScope,
+                            onSuccess = {
+                                isLoading = false
+                                onLoginSuccess()
+                            },
+                            onError = { err ->
+                                isLoading = false
+                                errorMessage = err
+                            },
+                            onCancelled = {
+                                isLoading = false
+                            }
+                        )
+                    } else {
+                        isLoading = false
+                        errorMessage = "Contexte d'activité introuvable"
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "Continuer avec Google",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "Vos informations sont sécurisées par Firebase Cloud Firestore et la passerelle CEMAC NboaShop.",
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+            )
         }
     }
 }

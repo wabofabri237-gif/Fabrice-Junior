@@ -1,6 +1,6 @@
 {
   "name": "NboaShop",
-  "description": "Le marché près de chez vous. Application de marketplace (Client, Vendeur, Livreur, Admin).",
+  "description": "Marketplace africaine avec paiements Mobile Money CEMAC, abonnements Pro et Firebase Analytics pour le suivi des conversions et performances.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

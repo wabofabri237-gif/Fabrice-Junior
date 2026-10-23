@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // ----------------------------------------------------
+    // User Profiles
+    // ----------------------------------------------------
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.role in ['CLIENT', 'SELLER', 'COURIER', 'ADMIN'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('city' in data) || (data.city is string && data.city.size() <= 50)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       (incoming().role != 'ADMIN' || isAdmin());
+
+      allow update: if isSignedIn() &&
+                       (request.auth.uid == userId || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'city', 'role', 'updatedAt']);
+
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // ----------------------------------------------------
+    // Products
+    // ----------------------------------------------------
+    function isValidProduct(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.sellerId is string && data.sellerId.size() <= 128 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 150 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             data.price is int && data.price >= 0 && data.price <= 50000000 &&
+             data.currency is string && data.currency.size() <= 10 &&
+             data.category is string && data.category.size() <= 50 &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000)) &&
+             data.inStock is bool &&
+             (!('stockQuantity' in data) || (data.stockQuantity is int && data.stockQuantity >= 0)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    match /products/{productId} {
+      allow get, list: if true;
+
+      allow create: if isSignedIn() &&
+                       isValidId(productId) &&
+                       incoming().sellerId == request.auth.uid &&
+                       isValidProduct(incoming());
+
+      allow update: if isSignedIn() &&
+                       (existing().sellerId == request.auth.uid || isAdmin()) &&
+                       incoming().sellerId == existing().sellerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidProduct(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'price', 'category', 'imageUrl', 'inStock', 'stockQuantity', 'updatedAt']);
+
+      allow delete: if isSignedIn() && (existing().sellerId == request.auth.uid || isAdmin());
+    }
+
+    // ----------------------------------------------------
+    // Orders
+    // ----------------------------------------------------
+    function isValidOrder(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.sellerId is string && data.sellerId.size() <= 128 &&
+             (!('courierId' in data) || (data.courierId is string && data.courierId.size() <= 128)) &&
+             data.totalAmount is int && data.totalAmount >= 0 && data.totalAmount <= 100000000 &&
+             data.paymentMethod in ['CASH_ON_DELIVERY', 'BANK_TRANSFER'] &&
+             data.deliveryAddress is string && data.deliveryAddress.size() <= 250 &&
+             data.deliveryCity is string && data.deliveryCity.size() <= 50 &&
+             data.contactPhone is string && data.contactPhone.size() <= 30 &&
+             (!('deliveryOtp' in data) || (data.deliveryOtp is string && data.deliveryOtp.size() <= 10)) &&
+             (!('bankTransferRef' in data) || (data.bankTransferRef is string && data.bankTransferRef.size() <= 100)) &&
+             (!('bankAccountName' in data) || (data.bankAccountName is string && data.bankAccountName.size() <= 100)) &&
+             (!('itemsSummary' in data) || (data.itemsSummary is string && data.itemsSummary.size() <= 2000)) &&
+             data.status in ['PENDING', 'CONFIRMED', 'PROCESSING', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        resource.data.courierId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        resource.data.courierId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       isValidOrder(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidOrder(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().sellerId == existing().sellerId &&
+                       incoming().createdAt == existing().createdAt && (
+                         (existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['bankTransferRef', 'bankAccountName', 'contactPhone', 'deliveryAddress', 'status', 'updatedAt'])) ||
+                         (existing().sellerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'courierId', 'updatedAt'])) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'courierId', 'updatedAt'])) ||
+                         isAdmin()
+                       );
+
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------
+    // Bank Accounts (For local bank wire transfer)
+    // ----------------------------------------------------
+    function isValidBankAccount(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.bankName is string && data.bankName.size() <= 100 &&
+             data.accountName is string && data.accountName.size() <= 100 &&
+             data.iban is string && data.iban.size() <= 50 &&
+             (!('rib' in data) || (data.rib is string && data.rib.size() <= 50)) &&
+             (!('swift' in data) || (data.swift is string && data.swift.size() <= 30)) &&
+             data.active is bool;
+    }
+
+    match /bank_accounts/{accountId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------
+    // Admins Collection
+    // ----------------------------------------------------
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && request.auth.uid == adminId;
+      allow write: if false;
+    }
+  }
+}

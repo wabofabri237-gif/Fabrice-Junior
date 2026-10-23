@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan directeur de mise en œuvre et de déploiement en production pour NboaShop (Architecture Firebase Firestore, Google Auth Credential Manager, Paiement à la livraison et Virement Bancaire Local CEMAC, Rôles Client/Vendeur/Livreur, et Sécurité Zero-Trust).",
+  "updatedAt":  "2026-10-23T00:05:58.885262764Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

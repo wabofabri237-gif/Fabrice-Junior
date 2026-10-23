@@ -42,10 +42,12 @@ fun OrderTrackingScreen(
     DisposableEffect(Unit) {
         var listener: com.google.firebase.firestore.ListenerRegistration? = null
         try {
-            val db = FirebaseFirestore.getInstance()
-            listener = db.collection("orders")
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .addSnapshotListener { snapshot, error ->
+            val currentUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+            val db = com.example.data.firebase.FirestoreProvider.get(context)
+            if (!currentUid.isNullOrBlank()) {
+                listener = db.collection("orders")
+                    .whereEqualTo("userId", currentUid)
+                    .addSnapshotListener { snapshot, error ->
                     isLoading = false
                     if (error != null) {
                         errorMessage = "Mode hors-ligne / Synchronisation Firestore en attente"
@@ -114,6 +116,9 @@ fun OrderTrackingScreen(
                         }
                     }
                 }
+            } else {
+                isLoading = false
+            }
         } catch (e: Exception) {
             isLoading = false
             ordersList = listOf(
@@ -139,7 +144,7 @@ fun OrderTrackingScreen(
     // Function to update status in Firestore in real-time
     val updateOrderStatus: (String, String) -> Unit = { orderId, newStatus ->
         try {
-            val db = FirebaseFirestore.getInstance()
+            val db = com.example.data.firebase.FirestoreProvider.get(context)
             db.collection("orders").document(orderId)
                 .update("status", newStatus)
                 .addOnSuccessListener {

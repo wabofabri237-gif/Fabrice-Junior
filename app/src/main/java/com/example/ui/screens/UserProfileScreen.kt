@@ -68,7 +68,7 @@ fun UserProfileScreen(
     // Load profile from Firestore on start
     LaunchedEffect(Unit) {
         try {
-            val db = FirebaseFirestore.getInstance()
+            val db = com.example.data.firebase.FirestoreProvider.get(context)
             db.collection("users").document("current_user_profile")
                 .get()
                 .addOnSuccessListener { document ->
@@ -111,7 +111,7 @@ fun UserProfileScreen(
         )
 
         try {
-            val db = FirebaseFirestore.getInstance()
+            val db = com.example.data.firebase.FirestoreProvider.get(context)
             db.collection("users").document("current_user_profile")
                 .set(profileData)
                 .addOnSuccessListener {
